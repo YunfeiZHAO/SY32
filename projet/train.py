@@ -27,12 +27,30 @@ class LoadData:
                 im_object.add_face(Box(label[1], label[2], label[3], label[4]))
             self.original_image.append(im_object)
         return  self.original_image
-
-    def get_detected_box(self, path):
+    '''
+        Add all detected boxs to the correspnding image of a list of type image 
+        args:
+            images: 
+                list of type Image
+            path: 
+                path to the detection.txt
+    '''
+    def get_detected_box(self, images, path):
         self.labels_train = pd.read_csv(path, sep=' ', names=["n_image", "i", "j", "h", "l"], header=None)
-        for idx, label in self.labels_train.iterrows():
-            self.original_image[label[0]].dec
-            print(f'{label[0]}  {label[1]}  {label[2]} {label[3]}  {label[4]}')
+        self.labels_train['n_image'].astype(int)
+        # self.labels_train['i'].astype(int)
+        # self.labels_train['j'].astype(int)
+        # self.labels_train['h'].astype(int)
+        # self.labels_train['l'].astype(int)
+        i = 0
+        for image in images:
+            n_image  = image.number
+            boxs = self.labels_train.loc[self.labels_train['n_image'] == n_image]
+            for idx, label in boxs.iterrows():
+                b = Box(label[1], label[2], label[3], label[4])
+                image.add_detected(b)
+                i += 1
+        print(f'{i} images added in detected')
 
     def get_test_images(self, path='./project_test'):
         for i in range(500):
@@ -69,6 +87,30 @@ class GenerateData:
         print(f'{i} positive image generated.')
         return positive
 
+    def generate_neg_FP(images, h=HEIGHT, w=WIDTH):
+        """generate a set of positive training samples from a dataset lebelled
+        Args:
+            images: array of Images
+        Returns:
+            array of image matrix of the same size
+        """
+        negative = []
+        i = 0
+        for image in images:
+            im = image.image
+            for face in image.detected:
+                FP = True
+                for TP in image.face:
+                    if face.test_true_positive(TP) == True:
+                        FP = False
+                if FP == True:
+                    im_face = im[int(face.y):int(face.y + face.height), int(face.x):int(face.x + face.width)]
+                    im_face = transform.resize(im_face, (HEIGHT, WIDTH))
+                    negative.append(im_face)
+                    i += 1
+        print(f'{i} negative image generated.')
+        return negative
+
     def generate_neg_position(self, x_max, y_max, width, height):
         '''generate the position of the top left of the negative image'''
         x = np.random.randint(0, x_max - width)
@@ -101,7 +143,7 @@ class GenerateData:
         print(f'{i} negative image generated.')
         return negative
 
-    def save_data_to_image(self, image_array, path):
+    def save_data_to_image(image_array, path):
         '''save nparray as image in folder
             Args:
                 image_array: list of numpy arrays
@@ -112,22 +154,30 @@ class GenerateData:
             imsave(f'{path}/{idx:05d}.jpg', image)
         print(f'{idx + 1} image saved in {path}.')
 
-def hog_svm(date):
+def hog_svm(date, X_train, y_train):
     load_data = LoadData()
     generate_data = GenerateData()
     # type Image
     images = load_data.get_original_images()
-    X_train, y_train = Model.load_pos_neg_from_images(generate_data.generate_positive(images), generate_data.generate_negative(images))
     X_train_hog = Model.hog(X_train)
-    svm = Model.SVM(X_train_hog, y_train)
+    clf = svm.SVC(class_weight='balanced')
+    clf.fit(X_train_hog, y_train)
+    #svm = Model.SVM(X_train_hog, y_train)
     Model.save_model(svm, f'./result/hog_svm_{date}.sav')
 
-if __name__ == '__main__':
-    t = time.time()
-    # hog_svm('4_25')
+def augment_neg_FP(path_detection, path_folder):
     load_data = LoadData()
-    load_data.get_detected_box('./result/result_4_25/detection.txt')
-
-
+    load_data.get_original_images()
+    load_data.get_detected_box(load_data.original_image, path_detection)
+    neg_image = GenerateData.generate_neg_FP(load_data.original_image)
+    GenerateData.save_data_to_image(neg_image, path_folder)
+if __name__ == '__main__':
+    # hog_svm('4_25')
+    # augment_neg_FP('./result/result_4_27/train_result/detection.txt', './project_train/neg_svm_hog3')
+    t = time.time()
+    path_pos = ['./project_train/positive']
+    path_neg = ['./project_train/negative', './project_train/neg_svm_hog', './project_train/neg_svm_hog2', './project_train/neg_svm_hog3']
+    X_train, y_train = Model.load_combine_pos_neg_data(path_pos, path_neg)
+    hog_svm('4_27', X_train, y_train)
     time = time.time() - t
     print(f'time used: {time}')

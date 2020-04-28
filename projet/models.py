@@ -15,6 +15,7 @@ from skimage import transform
 from skimage.util import img_as_float
 from skimage.transform import rescale
 
+from sklearn import svm
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import GaussianNB
@@ -66,7 +67,7 @@ class Box:
     def test_true_positive(self, label_box, rate=0.5):
         if self.intersect_over_union(label_box) > rate:
             self.true_positive = True
-
+            return self.true_positive
 
 class Image:
     '''
@@ -134,28 +135,34 @@ class Image:
         print(f'images {self.number} saved to: {path}')
 
 class Model:
-    def load_combine_pos_neg_data(self, path_pos, path_neg):
+    def load_combine_pos_neg_data(path_pos, path_neg):
         '''Load negative images and positive images
             args: list folfers of positive images and list of folders of negative images
         '''
         X_train = []
         y_train = []
+        p = 0
+        n = 0
         for folder_path in path_pos:
             for filename in os.listdir(folder_path):
-                im = color.rgb2gray(imread(path_pos+filename))
+                im = color.rgb2gray(imread(folder_path+'/'+filename))
                 a = im.shape
                 if a[0] != 180 or a[1] != 120:
                     imshow(im)
                 X_train.append(im)
                 y_train.append(1)
+                p += 1
+        print(f'{p} positive samples loaded')
         for folder_path in path_neg:
             for filename in os.listdir(folder_path):
-                im = color.rgb2gray(imread(path_neg+filename))
+                im = color.rgb2gray(imread(folder_path+'/'+filename))
                 a = im.shape
                 if a[0] != 180 or a[1] != 120:
                     imshow(im)
                 X_train.append(im)
                 y_train.append(0)
+                n += 1
+        print(f'{n} negative samples loaded')
         return X_train, y_train
 
     def load_pos_neg_from_images(pimages, nimages):
@@ -180,7 +187,7 @@ class Model:
         return np.array([im.flatten() for im in X_train])
 
     def hog(X_train):
-        return np.array([feature.hog(im) for im in X_train])
+        return np.array([feature.hog(im, pixels_per_cell=(4, 4)) for im in X_train])
 
     # use hoge image as out put
     def hog2(images):
@@ -194,9 +201,10 @@ class Model:
         return cross_val_score(GaussianNB(), X_train, y_train)
 
     def SVM(X_train, y_train):
-        grid = GridSearchCV(LinearSVC(), {'C': [1.0, 2.0, 4.0, 8.0]})
+        grid = GridSearchCV(LinearSVC(class_weight='balanced'), {'C': [1.0, 2.0, 4.0, 8.0]})
         grid.fit(X_train, y_train)
         print(grid.best_score_)
+        print(grid.best_estimator_)
         model = grid.best_estimator_
         model.fit(X_train, y_train)
         return model

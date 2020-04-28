@@ -27,7 +27,7 @@ class FaceDetection:
                 j += 1
         return images, boxs
 
-    def face_detect_hog(self, model, scales=[0.5, 0.75, 1, 1.25, 1.5, 2], step_size=10, width=WIDTH, height=HEIGHT):
+    def face_detect_hog(self, model, scales=[0.5, 0.75, 1, 1.25, 1.5, 2], step_size=12, width=WIDTH, height=HEIGHT):
         self.image.detected = []
         for scale in scales:
             images, boxs = self.sliding_window(rescale(self.image.image, scale), step_size, width, height)
@@ -62,7 +62,7 @@ class FaceDetection:
         f = open(path, "w")
         for im in images:
             for b in im.detected:
-                f.write(f'{im.number} {b.y} {b.x} {b.height} {b.width}\n')
+                f.write(f'{im.number} {b.y} {b.x} {b.height} {b.width} {b.score}\n')
         f.close()
 
 def image_detection(images, result_path, model):
@@ -73,15 +73,23 @@ def image_detection(images, result_path, model):
     return: a line of detection.txt
     '''
     d = []
+    detected = []
+    for filename in os.listdir(f'{result_path}'):
+        detected.append(filename.split('.')[0])
+
     for image in images:
-        FD = FaceDetection(image)
-        FD.face_detect_hog(model)
-        image.remove_duplicates_detected_boxs()
-        for b in image.detected:
-            dect = f'{image.number} {b.y} {b.x} {b.height} {b.width}\n'
-            d.append(dect)
-        image.save_image_to_folder(f'{result_path}/train_result')
-        print(f'image {image.number} has been calculated')
+        if not str(image.number) in detected:
+            with open(f'{result_path}/result_txt/{image.number}.txt', 'w+') as f:
+                FD = FaceDetection(image)
+                FD.face_detect_hog(model)
+                image.remove_duplicates_detected_boxs()
+                for b in image.detected:
+                    dect = f'{image.number} {int(b.y)} {int(b.x)} {int(b.height)} {int(b.width)} {b.score}\n'
+                    d.append(dect)
+                    f.write(dect)
+                image.save_image_to_folder(f'{result_path}')
+            print(f'image {image.number} has been calculated')
+    print(d)
     return d
 
 def dection_multiprocessing(images, result_path, n_process, model):
@@ -109,14 +117,32 @@ def dection_multiprocessing(images, result_path, n_process, model):
             f.write(b)
     f.close()
 if __name__ == '__main__':
-    SVM_hog = Model.load_model('./result/result_4_25/hog_svm_4_25.sav')
+    # from train import hog_svm
+    # t = time.time()
+    # path_pos = ['./project_train/positive']
+    # path_neg = ['./project_train/negative', './project_train/neg_svm_hog']
+    # X_train, y_train = Model.load_combine_pos_neg_data(path_pos, path_neg)
+    # hog_svm('4_26', X_train, y_train)
+    # time = time.time() - t
+    # print(f'time used: {time}')
+
+    SVM_hog = Model.load_model('./result/result_4_27/hog_svm_4_27.sav')
     load_data = LoadData()
     # type Image
-    images = load_data.get_original_images()
+    #images = load_data.get_original_images()
     test = load_data.get_test_images()
+
+    # t = time.time()
+    # detections = dection_multiprocessing(test, './result/result_4_27/test_result', 12, SVM_hog)
+    # time_used = time.time() - t
+    # print(f'time used: {time_used}')
+    # print(detections)
+
     t = time.time()
-    detections = dection_multiprocessing(images, './result/result_4_25', 14, SVM_hog)
-    time = time.time() - t
-    print(f'time used: {time}')
+    detections = dection_multiprocessing(test, './result/result_4_27/test_result', 12, SVM_hog)
+    time_used = time.time() - t
+    print(f'time used: {time_used}')
     print(detections)
+
+
 #    im.save_image_to_folder('./result')
